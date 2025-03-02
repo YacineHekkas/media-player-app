@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tp_mobile/FavScreen.dart';
 
 class MusicPlayer extends StatefulWidget {
   const MusicPlayer({super.key});
@@ -12,6 +13,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
   bool isPaused = false;
   bool isFavorite = false;
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -22,25 +24,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
                SizedBox(height: MediaQuery.of(context).size.height*0.2),
-              // Container(
-              //   margin: EdgeInsets.all(10),
-              //   decoration: BoxDecoration(
-              //     borderRadius: BorderRadius.circular(20),
-              //     boxShadow: [
-              //       BoxShadow(
-              //         color: Colors.grey.withOpacity(0.2),
-              //         spreadRadius: 2,
-              //         blurRadius: 5,
-              //         offset: Offset(0, 3),
-              //       ),
-              //     ],
-              //   ),
-              //   clipBehavior: Clip.hardEdge,
-              //   child: Image.asset(
-              //     "assets/images/img.jpg",
-              //     fit: BoxFit.cover,
-              //   ),
-              // ),
+
 
               Center(
                 child: AnimatedContainer(
@@ -121,17 +105,24 @@ class _MusicPlayerState extends State<MusicPlayer> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        IconButton(
-                          icon: Icon(
-                            isFavorite ? Icons.favorite : Icons.favorite_border,
-                            color: isFavorite ? Colors.red : Colors.black,
-                          ),
-                          onPressed: () {
+                        GestureDetector(
+                          onLongPress: (){
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (context) => const Favscreen()),
+                            );
+                          },
+                          onTap: (){
                             setState(() {
                               isFavorite = !isFavorite;
                             });
                           },
+                          child: Icon(
+
+    isFavorite ? Icons.favorite : Icons.favorite_border,
+    color: isFavorite ? Colors.red : Colors.black,
+    ),
                         ),
+
                         const Text(
                           "go for some music",
                           style: TextStyle(
