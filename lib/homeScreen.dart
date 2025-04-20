@@ -1,5 +1,11 @@
+import 'dart:async';
+
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:tp_mobile/FavScreen.dart';
+
+import 'data.dart';
+import 'main.dart';
 
 class MusicPlayer extends StatefulWidget {
   const MusicPlayer({super.key});
@@ -8,11 +14,113 @@ class MusicPlayer extends StatefulWidget {
   State<MusicPlayer> createState() => _MusicPlayerState();
 }
 
-class _MusicPlayerState extends State<MusicPlayer> {
+class _MusicPlayerState extends State<MusicPlayer>
+    with RouteAware, WidgetsBindingObserver {
+
+  Song? selectedSong;
+  int currentSongIndex = 0;
+  late Timer _timer;
   bool isExpanded = false;
   bool isPaused = false;
   bool isFavorite = false;
+  bool screenoff = false;
 
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer.setSource(AssetSource('audio/test.mp3'));
+    WidgetsBinding.instance.addObserver(this);
+
+    selectedSong = dummySongs[currentSongIndex];
+    _checkIfFavorite();
+
+    // Set up timer to cycle through songs every 2 seconds
+    _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      setState(() {
+        currentSongIndex = (currentSongIndex + 1) % dummySongs.length;
+        selectedSong = dummySongs[currentSongIndex];
+        _checkIfFavorite();
+      });
+    });
+  }
+
+  Future<void> _checkIfFavorite() async {
+    if (selectedSong != null) {
+      final isFav = await DatabaseHelper.instance.isFavorite(selectedSong!.id);
+      setState(() {
+        isFavorite = isFav;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  Future<void> _playMusic() async {
+    await _audioPlayer.resume();
+  }
+
+  Future<void> _pauseMusic() async {
+    await _audioPlayer.pause();
+  }
+
+  @override
+  void didPushNext() {
+    setState(() {
+      screenoff = false;
+    });
+    _pauseMusic();
+  }
+
+  @override
+  void didPopNext() {
+    if (!isPaused) {
+      setState(() {
+        screenoff = true;
+      });
+      _playMusic();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _pauseMusic();
+    } else if (state == AppLifecycleState.resumed && !isPaused) {
+      if (screenoff) {
+        _playMusic();
+      }
+    }
+  }
+
+  Future<void> addFavorite() async {
+    if (selectedSong != null) {
+      setState(() {
+        isFavorite = !isFavorite;
+      });
+
+      if (isFavorite) {
+        await DatabaseHelper.instance.insertFavorite(selectedSong!);
+      } else {
+        await DatabaseHelper.instance.deleteFavorite(selectedSong!.id);
+      }
+    }
+
+
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,13 +131,11 @@ class _MusicPlayerState extends State<MusicPlayer> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-               SizedBox(height: MediaQuery.of(context).size.height*0.2),
-
-
+              SizedBox(height: MediaQuery.of(context).size.height * 0.2),
               Center(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 50),
-                  transform: Matrix4.rotationZ(isPaused?0.2:0.0),
+                  transform: Matrix4.rotationZ(isPaused ? 0.2 : 0.0),
                   margin: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
@@ -51,7 +157,6 @@ class _MusicPlayerState extends State<MusicPlayer> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 60),
               if (!isExpanded)
                 IconButton(
@@ -82,6 +187,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
                               setState(() {
                                 isPaused = true;
                               });
+                              _pauseMusic();
                             },
                           )
                         else
@@ -92,6 +198,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
                               setState(() {
                                 isPaused = false;
                               });
+                              _playMusic();
                             },
                           ),
                         IconButton(
@@ -106,30 +213,29 @@ class _MusicPlayerState extends State<MusicPlayer> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         GestureDetector(
-                          onLongPress: (){
+                          onLongPress: () {
                             Navigator.of(context).push(
-                              MaterialPageRoute(builder: (context) => const Favscreen()),
+                              MaterialPageRoute(
+                                builder: (context) => Favscreen(),
+                              ),
                             );
                           },
-                          onTap: (){
-                            setState(() {
-                              isFavorite = !isFavorite;
-                            });
-                          },
+                          onTap: addFavorite,
                           child: Icon(
-
-    isFavorite ? Icons.favorite : Icons.favorite_border,
-    color: isFavorite ? Colors.red : Colors.black,
-    ),
-                        ),
-
-                        const Text(
-                          "go for some music",
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.black54,
+                            isFavorite ? Icons.favorite : Icons.favorite_border,
+                            color: isFavorite ? Colors.red : Colors.black,
+                            size: 28,
                           ),
                         ),
+                        Text(
+                          selectedSong?.title ?? '',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
                       ],
                     ),
                   ],
@@ -141,3 +247,4 @@ class _MusicPlayerState extends State<MusicPlayer> {
     );
   }
 }
+
