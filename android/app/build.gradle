@@ -5,6 +5,14 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+dependencies {
+    // ... other dependencies
+
+    // Add these lines
+    implementation "androidx.media:media:1.4.3"
+    implementation "androidx.core:core:1.7.0"
+}
+
 android {
     namespace = "com.example.tp_mobile"
     compileSdk = flutter.compileSdkVersion

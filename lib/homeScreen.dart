@@ -4,6 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:tp_mobile/FavScreen.dart';
 
+import 'audioService.dart';
 import 'data.dart';
 import 'main.dart';
 
@@ -16,6 +17,9 @@ class MusicPlayer extends StatefulWidget {
 
 class _MusicPlayerState extends State<MusicPlayer>
     with RouteAware, WidgetsBindingObserver {
+
+  final AudioService _audioService = AudioService();
+
 
   Song? selectedSong;
   int currentSongIndex = 0;
@@ -70,11 +74,17 @@ class _MusicPlayerState extends State<MusicPlayer>
   }
 
   Future<void> _playMusic() async {
-    await _audioPlayer.resume();
+    // await _audioPlayer.resume();
+
+
+      _audioService.playAudio();
   }
 
   Future<void> _pauseMusic() async {
-    await _audioPlayer.pause();
+    // await _audioPlayer.pause();
+
+      _audioService.pauseAudio();
+
   }
 
   @override
@@ -97,13 +107,14 @@ class _MusicPlayerState extends State<MusicPlayer>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      _pauseMusic();
-    } else if (state == AppLifecycleState.resumed && !isPaused) {
-      if (screenoff) {
-        _playMusic();
-      }
-    }
+    // if (state == AppLifecycleState.paused) {
+    //   _pauseMusic();
+    // }
+    // else if (state == AppLifecycleState.resumed && !isPaused) {
+    //   if (screenoff) {
+    //     _playMusic();
+    //   }
+    // }
   }
 
   Future<void> addFavorite() async {
