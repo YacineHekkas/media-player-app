@@ -2,13 +2,10 @@ import 'package:flutter/services.dart';
 
 class AudioService {
   static const MethodChannel _channel = MethodChannel('com.example.tp_mobile/audio');
-
   Function(bool)? onPlaybackStateChanged;
 
   AudioService() {
     _channel.setMethodCallHandler(_handleMethodCall);
-
-    // Register for broadcast events
     _channel.invokeMethod('registerBroadcastReceiver');
   }
 
@@ -25,13 +22,17 @@ class AudioService {
     }
   }
 
-  Future<void> playAudio() async {
+  Future<void> playAudio({String? filePath, String? songName, String? artistName}) async {
     try {
-      await _channel.invokeMethod('playAudio');
+      final Map<String, dynamic> arguments = {
+        'filePath': filePath,
+        'songName': songName ?? 'Unknown Track',
+        'artistName': artistName ?? 'Unknown Artist',
+      };
+
+      await _channel.invokeMethod('playAudio', arguments);
     } on PlatformException catch (e) {
       print('Error playing audio: ${e.message}');
-    } on MissingPluginException catch (e) {
-      print('Missing plugin exception: ${e.message}');
     } catch (e) {
       print('Unexpected error: $e');
     }

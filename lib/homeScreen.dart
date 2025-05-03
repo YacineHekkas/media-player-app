@@ -35,6 +35,8 @@ class _MusicPlayerState extends State<MusicPlayer>
   void initState() {
     super.initState();
     _audioPlayer.setSource(AssetSource('audio/test.mp3'));
+
+    _audioService.onPlaybackStateChanged = _handlePlaybackStateChanged;
     WidgetsBinding.instance.addObserver(this);
 
     selectedSong = dummySongs[currentSongIndex];
@@ -47,6 +49,12 @@ class _MusicPlayerState extends State<MusicPlayer>
         selectedSong = dummySongs[currentSongIndex];
         _checkIfFavorite();
       });
+    });
+  }
+
+  void _handlePlaybackStateChanged(bool isPlaying) {
+    setState(() {
+      isPaused = !isPlaying;
     });
   }
 
@@ -188,7 +196,8 @@ class _MusicPlayerState extends State<MusicPlayer>
                         IconButton(
                           icon: const Icon(Icons.skip_previous),
                           iconSize: 60,
-                          onPressed: () {},
+                          onPressed: () {
+                          },
                         ),
                         if (!isPaused)
                           IconButton(
@@ -215,7 +224,8 @@ class _MusicPlayerState extends State<MusicPlayer>
                         IconButton(
                           icon: const Icon(Icons.skip_next),
                           iconSize: 60,
-                          onPressed: () {},
+                          onPressed: () {
+                          },
                         ),
                       ],
                     ),

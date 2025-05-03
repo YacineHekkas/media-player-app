@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:tp_mobile/test.dart';
 
 import 'homeScreen.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
 
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
 
   runApp(const MyApp());
 }

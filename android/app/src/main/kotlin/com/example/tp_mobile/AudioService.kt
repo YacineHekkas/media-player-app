@@ -37,6 +37,8 @@ class AudioService : Service() {
         const val ACTION_STOP = "com.example.tp_mobile.STOP"
         const val ACTION_NEXT = "com.example.tp_mobile.NEXT"
         const val ACTION_PREVIOUS = "com.example.tp_mobile.PREVIOUS"
+        const val ACTION_TOGGLE = "com.example.tp_mobile.TOGGLE"
+
     }
 
     override fun onCreate() {
@@ -227,6 +229,14 @@ class AudioService : Service() {
         Log.d("AudioService", "onStartCommand called with action: ${intent?.action}")
 
         when (intent?.action) {
+            ACTION_TOGGLE -> {
+                Log.d("AudioService", "Processing TOGGLE action")
+                if (isPlaying) {
+                    pauseAudio()
+                } else {
+                    playAudio()
+                }
+            }
             ACTION_PLAY -> {
                 Log.d("AudioService", "Processing PLAY action")
                 playAudio()
