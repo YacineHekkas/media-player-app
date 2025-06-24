@@ -1,26 +1,24 @@
 package com.example.tp_mobile
 
+import java.io.File
+import java.io.FileOutputStream
 import android.app.*
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
-import android.media.MediaPlayer
-import android.os.Binder
-import android.os.Build
-import android.os.IBinder
-import android.os.PowerManager
+import android.media.*
+import android.media.session.MediaSession
+import android.net.Uri
+import android.os.*
+import android.provider.MediaStore
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
-import android.util.Log
-import java.io.File
-import java.io.FileOutputStream
+import android.graphics.BitmapFactory
+import android.content.ContentUris
+import androidx.annotation.NonNull
 
 class AudioService : Service() {
     private var mediaPlayer: MediaPlayer? = null
@@ -29,33 +27,92 @@ class AudioService : Service() {
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
 
+    private var currentTitle: String = ""
+    private var currentArtist: String = ""
+    private var currentDuration: Long = 0
+
     companion object {
         const val NOTIFICATION_ID = 1
         const val CHANNEL_ID = "AudioServiceChannel"
         const val ACTION_PLAY = "com.example.tp_mobile.PLAY"
         const val ACTION_PAUSE = "com.example.tp_mobile.PAUSE"
-        const val ACTION_STOP = "com.example.tp_mobile.STOP"
-        const val ACTION_NEXT = "com.example.tp_mobile.NEXT"
-        const val ACTION_PREVIOUS = "com.example.tp_mobile.PREVIOUS"
         const val ACTION_TOGGLE = "com.example.tp_mobile.TOGGLE"
 
     }
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("AudioService", "onCreate called")
-
-        // Get audio manager
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-
-        // Create notification channel
         createNotificationChannel()
-
-        // Initialize MediaSession
         initMediaSession()
-
-        // Initialize MediaPlayer
         initMediaPlayer()
+    }
+
+    private fun initMediaPlayer() {
+        mediaPlayer = MediaPlayer().apply {
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+            setOnCompletionListener {
+                updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
+                stopForeground(true)
+                stopSelf()
+            }
+            setOnPreparedListener {
+                start()
+                isPlaying = true
+                updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                updateMediaSessionMetadata()
+                startForeground(NOTIFICATION_ID, createNotification())
+                updatePlaybackStateUI(true)
+            }
+            setOnErrorListener { _, what, extra ->
+                Log.e("AudioService", "Media error: $what, $extra")
+                true
+            }
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_TOGGLE -> if (isPlaying) pauseAudio() else playAudio(intent)
+            ACTION_PLAY -> playAudio(intent)
+            ACTION_PAUSE -> pauseAudio()
+        }
+        return START_STICKY
+    }
+
+    private fun playAudio(intent: Intent) {
+        intent.getStringExtra("uri")?.let { uriString ->
+            val uri = Uri.parse(uriString)
+            currentTitle = intent.getStringExtra("title") ?: ""
+            currentArtist = intent.getStringExtra("artist") ?: ""
+            currentDuration = intent.getLongExtra("duration", 0L)
+
+            mediaPlayer?.apply {
+                reset()
+                try {
+                    setDataSource(applicationContext, uri)
+                    prepareAsync()
+                } catch (e: Exception) {
+                    Log.e("AudioService", "Error setting data source: ${e.message}")
+                    abandonAudioFocus()
+                }
+            }
+        }
+    }
+
+    private fun pauseAudio() {
+        mediaPlayer?.pause()
+        isPlaying = false
+        updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+        startForeground(NOTIFICATION_ID, createNotification())
+        updatePlaybackStateUI(false)
+        abandonAudioFocus()
     }
 
     private fun initMediaSession() {
@@ -107,160 +164,6 @@ class AudioService : Service() {
 
         // Start the session
         mediaSession.isActive = true
-    }
-
-    private fun initMediaPlayer() {
-        Log.d("AudioService", "Initializing MediaPlayer")
-
-        mediaPlayer = MediaPlayer().apply {
-            try {
-                // Set audio attributes for proper audio focus handling
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
-                )
-
-                // Wake lock to keep CPU running during playback
-                setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
-
-                // Try to load from Flutter assets
-                val assetManager = applicationContext.assets
-                try {
-                    // Try the direct path first
-                    val inputStream = assetManager.open("flutter_assets/assets/audio/test.mp3")
-                    Log.d("AudioService", "Found audio file at flutter_assets/assets/audio/test.mp3")
-
-                    // Create a temporary file
-                    val tempFile = File(applicationContext.cacheDir, "temp_audio.mp3")
-                    val outputStream = FileOutputStream(tempFile)
-
-                    // Copy the file
-                    val buffer = ByteArray(1024)
-                    var read: Int
-                    while (inputStream.read(buffer).also { read = it } != -1) {
-                        outputStream.write(buffer, 0, read)
-                    }
-                    inputStream.close()
-                    outputStream.flush()
-                    outputStream.close()
-
-                    // Use the temporary file
-                    setDataSource(tempFile.path)
-                    prepare()
-
-                    Log.d("AudioService", "Audio file loaded successfully from assets")
-                } catch (e: Exception) {
-                    Log.e("AudioService", "Error loading from flutter_assets path: ${e.message}")
-
-                    try {
-                        // Try alternative path
-                        val inputStream = assetManager.open("assets/audio/test.mp3")
-                        Log.d("AudioService", "Found audio file at assets/audio/test.mp3")
-
-                        // Create a temporary file
-                        val tempFile = File(applicationContext.cacheDir, "temp_audio.mp3")
-                        val outputStream = FileOutputStream(tempFile)
-
-                        // Copy the file
-                        val buffer = ByteArray(1024)
-                        var read: Int
-                        while (inputStream.read(buffer).also { read = it } != -1) {
-                            outputStream.write(buffer, 0, read)
-                        }
-                        inputStream.close()
-                        outputStream.flush()
-                        outputStream.close()
-
-                        // Use the temporary file
-                        setDataSource(tempFile.path)
-                        prepare()
-
-                        Log.d("AudioService", "Audio file loaded successfully from alternative path")
-                    } catch (e2: Exception) {
-                        Log.e("AudioService", "Error loading from alternative path: ${e2.message}")
-                        e2.printStackTrace()
-
-                        // Try using a raw resource as last resort
-                        try {
-                            val resourceId = resources.getIdentifier("test_audio", "raw", packageName)
-                            if (resourceId > 0) {
-                                Log.d("AudioService", "Found audio file in raw resources")
-                                val afd = resources.openRawResourceFd(resourceId)
-                                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                                afd.close()
-                                prepare()
-                                Log.d("AudioService", "Audio file loaded successfully from raw resources")
-                            } else {
-                                Log.e("AudioService", "Raw resource not found")
-                            }
-                        } catch (e3: Exception) {
-                            Log.e("AudioService", "Error loading from raw resources: ${e3.message}")
-                            e3.printStackTrace()
-                        }
-                    }
-                }
-
-                setOnCompletionListener {
-                    Log.d("AudioService", "Audio playback completed")
-                    updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
-                    stopForeground(true)
-                    stopSelf()
-                }
-
-                setOnErrorListener { _, what, extra ->
-                    Log.e("AudioService", "MediaPlayer error: what=$what, extra=$extra")
-                    true
-                }
-
-                setOnPreparedListener {
-                    Log.d("AudioService", "MediaPlayer prepared")
-                }
-
-            } catch (e: Exception) {
-                Log.e("AudioService", "Error initializing MediaPlayer: ${e.message}")
-                e.printStackTrace()
-            }
-        }
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d("AudioService", "onStartCommand called with action: ${intent?.action}")
-
-        when (intent?.action) {
-            ACTION_TOGGLE -> {
-                Log.d("AudioService", "Processing TOGGLE action")
-                if (isPlaying) {
-                    pauseAudio()
-                } else {
-                    playAudio()
-                }
-            }
-            ACTION_PLAY -> {
-                Log.d("AudioService", "Processing PLAY action")
-                playAudio()
-            }
-            ACTION_PAUSE -> {
-                Log.d("AudioService", "Processing PAUSE action")
-                pauseAudio()
-            }
-            ACTION_STOP -> {
-                Log.d("AudioService", "Processing STOP action")
-                stopSelf()
-            }
-            ACTION_NEXT -> {
-                Log.d("AudioService", "Processing NEXT action")
-                // Implement if you have playlist functionality
-            }
-            ACTION_PREVIOUS -> {
-                Log.d("AudioService", "Processing PREVIOUS action")
-                // Implement if you have playlist functionality
-            }
-        }
-
-        // If service is killed, restart it
-        return START_STICKY
     }
 
     private fun requestAudioFocus(): Boolean {
@@ -331,68 +234,6 @@ class AudioService : Service() {
         } else {
             @Suppress("DEPRECATION")
             audioManager.abandonAudioFocus(null)
-        }
-    }
-
-    private fun playAudio() {
-        Log.d("AudioService", "playAudio called")
-
-        if (mediaPlayer != null && !isPlaying) {
-            if (requestAudioFocus()) {
-                try {
-                    mediaPlayer?.start()
-                    isPlaying = true
-
-                    // Update media session
-                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-                    updateMediaSessionMetadata()
-
-                    // Start foreground service with notification
-                    startForeground(NOTIFICATION_ID, createNotification())
-
-                    updatePlaybackStateUI(true)
-
-                    Log.d("AudioService", "Audio playback started")
-                } catch (e: Exception) {
-                    Log.e("AudioService", "Error starting playback: ${e.message}")
-                    e.printStackTrace()
-                }
-            } else {
-                Log.e("AudioService", "Could not get audio focus")
-            }
-        } else {
-            Log.d("AudioService", "MediaPlayer is null or already playing")
-        }
-    }
-
-    private fun pauseAudio() {
-        Log.d("AudioService", "pauseAudio called")
-
-        if (mediaPlayer != null && isPlaying) {
-            try {
-                mediaPlayer?.pause()
-                isPlaying = false
-
-                // Update media session
-                updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
-
-                // Update notification but keep the service in foreground
-                val notification = createNotification()
-                startForeground(NOTIFICATION_ID, notification)
-
-                // Update UI via broadcast
-                updatePlaybackStateUI(false)
-
-                // Abandon audio focus
-                abandonAudioFocus()
-
-                Log.d("AudioService", "Audio playback paused")
-            } catch (e: Exception) {
-                Log.e("AudioService", "Error pausing playback: ${e.message}")
-                e.printStackTrace()
-            }
-        } else {
-            Log.d("AudioService", "MediaPlayer is null or not playing")
         }
     }
 

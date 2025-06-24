@@ -4,19 +4,26 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import androidx.annotation.NonNull
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import android.util.Log
+import androidx.annotation.RequiresApi
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import android.util.Log
 
+import android.content.ContentUris
+import androidx.annotation.NonNull
+import java.io.File
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.tp_mobile/audio"
     private var broadcastReceiver: BroadcastReceiver? = null
+    private lateinit var mediaRepository: MediaRepository
 
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
@@ -24,73 +31,62 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-
+        mediaRepository = MediaRepository(this)
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         shakeDetector = ShakeDetector {
-            Log.d("MainActivity", "Shake detected - toggling audio")
             val toggleIntent = Intent(this, AudioService::class.java).apply {
                 action = AudioService.ACTION_TOGGLE
             }
             startService(toggleIntent)
         }
 
-        Log.d("MainActivity", "Setting up method channel: $CHANNEL")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getAudioFiles" -> {
+                        result.success(mediaRepository.getAudioFiles().map { audioFile ->
+                            mapOf(
+                                "id" to audioFile.id,
+                                "title" to audioFile.title,
+                                "artist" to audioFile.artist,
+                                "duration" to audioFile.duration,
+                                "uri" to audioFile.uri.toString()
+                            )
+                        })
+                    }
+                    "playAudio" -> {
+                        val uri = call.argument<String>("uri") ?: ""
+                        val title = call.argument<String>("title") ?: ""
+                        val artist = call.argument<String>("artist") ?: ""
+                        val duration = call.argument<Long>("duration") ?: 0L
 
-        val methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
-        methodChannel.setMethodCallHandler { call, result ->
-            Log.d("MainActivity", "Received method call: ${call.method}")
-
-            when (call.method) {
-                "playAudio" -> {
-                    Log.d("MainActivity", "Play audio called")
-                    try {
-                        // Register broadcast receiver if not already registered
-                        registerBroadcastReceiver(methodChannel)
-
-                        // Create explicit intent with the correct action
-                        val intent = Intent(this, AudioService::class.java)
-                        intent.action = AudioService.ACTION_PLAY
-
-                        // Log the intent details
-                        Log.d("MainActivity", "Starting service with intent: ${intent.action}")
-                        Log.d("MainActivity", "Service class: ${AudioService::class.java.name}")
-
-                        // Start the service
-                        startService(intent)
-
-                        // Return success to Flutter
+                        Intent(this@MainActivity, AudioService::class.java).apply {
+                            action = AudioService.ACTION_PLAY
+                            putExtra("uri", uri)
+                            putExtra("title", title)
+                            putExtra("artist", artist)
+                            putExtra("duration", duration)
+                            startService(this)
+                        }
                         result.success("Playing audio")
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Error starting service: ${e.message}")
-                        e.printStackTrace()
-                        result.error("SERVICE_ERROR", "Error starting service", e.message)
                     }
-                }
-                "pauseAudio" -> {
-                    Log.d("MainActivity", "Pause audio called")
-                    try {
-                        val intent = Intent(this, AudioService::class.java)
-                        intent.action = AudioService.ACTION_PAUSE
-                        startService(intent)
-                        result.success("Pausing audio")
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Error pausing service: ${e.message}")
-                        e.printStackTrace()
-                        result.error("SERVICE_ERROR", "Error pausing service", e.message)
+                    "pauseAudio" -> {
+                        Intent(this@MainActivity, AudioService::class.java).apply {
+                            action = AudioService.ACTION_PAUSE
+                            startService(this)
+                        }
+                        result.success("Paused audio")
                     }
-                }
-                "registerBroadcastReceiver" -> {
-                    registerBroadcastReceiver(methodChannel)
-                    result.success(null)
-                }
-                "unregisterBroadcastReceiver" -> {
-                    unregisterBroadcastReceiver()
-                    result.success(null)
-                }
-                else -> {
-                    Log.d("MainActivity", "Method not implemented: ${call.method}")
-                    result.notImplemented()
+                    "registerBroadcastReceiver" -> {
+                        registerBroadcastReceiver(this)
+                        result.success(null)
+                    }
+                    "unregisterBroadcastReceiver" -> {
+                        unregisterBroadcastReceiver()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
                 }
             }
         }
@@ -107,7 +103,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    override fun onPause() {
+    override fun onPause()   {
         super.onPause()
         sensorManager.unregisterListener(sensorEventListener)
     }
@@ -191,5 +187,53 @@ class MainActivity : FlutterActivity() {
 
 
         super.onDestroy()
+    }
+}
+
+class MediaRepository(private val context: Context) {
+    data class AudioFile(
+        val id: Long,
+        val title: String,
+        val artist: String,
+        val duration: Long,
+        val uri: Uri
+    )
+
+    fun getAudioFiles(): List<AudioFile> {
+        val audioList = mutableListOf<AudioFile>()
+        val projection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.DATA
+        )
+
+        context.contentResolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            null,
+            null,
+            "${MediaStore.Audio.Media.TITLE} ASC"
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+            val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+            val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val title = cursor.getString(titleColumn)
+                val artist = cursor.getString(artistColumn)
+                val duration = cursor.getLong(durationColumn)
+                val contentUri = ContentUris.withAppendedId(
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    id
+                )
+
+                audioList.add(AudioFile(id, title, artist, duration, contentUri))
+            }
+        }
+        return audioList
     }
 }

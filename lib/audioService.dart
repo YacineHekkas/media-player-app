@@ -2,19 +2,27 @@ import 'package:flutter/services.dart';
 
 class AudioService {
   static const MethodChannel _channel = MethodChannel('com.example.tp_mobile/audio');
-  Function(bool)? onPlaybackStateChanged;
+
+  // Callback for playback state changes
+  Function(bool isPlaying, String songName, String artistName)? onPlaybackStateChanged;
 
   AudioService() {
     _channel.setMethodCallHandler(_handleMethodCall);
+
+    // Register for broadcast events
     _channel.invokeMethod('registerBroadcastReceiver');
   }
 
   Future<void> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
       case 'onPlaybackStateChanged':
-        final bool isPlaying = call.arguments as bool;
         if (onPlaybackStateChanged != null) {
-          onPlaybackStateChanged!(isPlaying);
+          final Map<dynamic, dynamic> data = call.arguments as Map<dynamic, dynamic>;
+          final bool isPlaying = data['isPlaying'] as bool;
+          final String songName = data['songName'] as String;
+          final String artistName = data['artistName'] as String;
+
+          onPlaybackStateChanged!(isPlaying, songName, artistName);
         }
         break;
       default:

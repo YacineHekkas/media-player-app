@@ -38,6 +38,7 @@ dependencies:
   sqflite: ^2.4.1
   permission_handler: ^12.0.0+1
   file_picker: ^10.1.2
+  path: ^1.8.3
 
 
 

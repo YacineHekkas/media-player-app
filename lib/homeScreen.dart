@@ -35,8 +35,6 @@ class _MusicPlayerState extends State<MusicPlayer>
   void initState() {
     super.initState();
     _audioPlayer.setSource(AssetSource('audio/test.mp3'));
-
-    _audioService.onPlaybackStateChanged = _handlePlaybackStateChanged;
     WidgetsBinding.instance.addObserver(this);
 
     selectedSong = dummySongs[currentSongIndex];
@@ -49,12 +47,6 @@ class _MusicPlayerState extends State<MusicPlayer>
         selectedSong = dummySongs[currentSongIndex];
         _checkIfFavorite();
       });
-    });
-  }
-
-  void _handlePlaybackStateChanged(bool isPlaying) {
-    setState(() {
-      isPaused = !isPlaying;
     });
   }
 
@@ -84,6 +76,11 @@ class _MusicPlayerState extends State<MusicPlayer>
   Future<void> _playMusic() async {
     // await _audioPlayer.resume();
 
+    // await AudioPlayerService.init();
+    // final path = await AudioPlayerService.pickAudioFile();
+    // if (path != null) {
+    //   await AudioPlayerService.playFile(path);
+    // }
 
       _audioService.playAudio();
   }
